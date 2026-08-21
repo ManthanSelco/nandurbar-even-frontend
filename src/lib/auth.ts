@@ -1,0 +1,1 @@
+export function logout(){sessionStorage.clear();window.location.href="/admin/login"} export function getStaff(){try{return JSON.parse(sessionStorage.getItem("pj_staff")||"null")}catch{return null}}

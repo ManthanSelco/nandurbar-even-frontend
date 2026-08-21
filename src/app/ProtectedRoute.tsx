@@ -1,0 +1,2 @@
+import {Navigate,Outlet,useLocation} from "react-router-dom";
+export function ProtectedRoute(){const l=useLocation();const token=sessionStorage.getItem("pj_token");return token?<Outlet/>:<Navigate to={`/admin/login?redirect=${encodeURIComponent(l.pathname)}`} replace/>;}
