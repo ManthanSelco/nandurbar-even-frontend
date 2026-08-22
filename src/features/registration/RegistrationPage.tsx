@@ -341,18 +341,7 @@ export function RegistrationPage() {
                 <div className="field"><label className="field-label" htmlFor="location">{t.location}<span>*</span></label><input id="location" required placeholder={t.locationPlaceholder} value={form.location} onChange={(event) => setField("location", event.target.value)} /></div>
                 <div className="field field-full"><label className="field-label" htmlFor="organizationType">{t.organizationType}<span>*</span></label><select id="organizationType" required value={form.organizationType} onChange={(event) => setField("organizationType", event.target.value)}><option value="">—</option><option value="INDIVIDUAL_ENTREPRENEUR">{t.individualEntrepreneur}</option><option value="SHG">{t.shg}</option><option value="FPO_FPC">{t.fpoFpc}</option><option value="COOPERATIVE">{t.cooperative}</option><option value="NGO">{t.ngo}</option><option value="GOVERNMENT">{t.government}</option><option value="PRIVATE_COMPANY">{t.privateCompany}</option><option value="OTHER">{t.organizationOther}</option></select></div>
                 <div className="field field-full"><label className="field-label" htmlFor="organizationName">{t.organizationName}<span>*</span></label><input id="organizationName" required placeholder={t.organizationNamePlaceholder} value={form.organizationName} onChange={(event) => setField("organizationName", event.target.value)} /></div>
-                <div className="field field-full"><label className="field-label" htmlFor="sector">{t.sector}<span>*</span></label><select id="sector" required value={form.sector} onChange={(event) => setField("sector", event.target.value)}><option value="">—</option><option value="FOOD_PROCESSING">{t.foodProcessing}</option><option value="AGRICULTURE">{t.agriculture}</option><option value="LIVESTOCK">{t.livestock}</option><option value="RETAIL_SERVICES">{t.retailServices}</option><option value="MANUFACTURING">{t.manufacturing}</option>
-                 <option value="Papad">{t.papad}</option>
-    <option value="Mushroom">{t.mushroom}</option>
-    <option value="Millets">{t.millets}</option>
-    <option value="Chilli">{t.chilli}</option>
-    <option value="Oil Mill">{t.oilMill}</option>
-    <option value="Rice Mill">{t.riceMill}</option>
-    <option value="Dairy">{t.dairy}</option>
-    <option value="Honey">{t.honey}</option>
-    <option value="Dal">{t.dal}</option>
-    <option value="Vegitable">{t.vegetable}</option>
-                <option value="OTHER">{t.sectorOther}</option></select></div>
+                <div className="field field-full"><label className="field-label" htmlFor="sector">{t.sector}<span>*</span></label><select id="sector" required value={form.sector} onChange={(event) => setField("sector", event.target.value)}><option value="">—</option><option value="FOOD_PROCESSING">{t.foodProcessing}</option><option value="AGRICULTURE">{t.agriculture}</option><option value="LIVESTOCK">{t.livestock}</option><option value="RETAIL_SERVICES">{t.retailServices}</option><option value="MANUFACTURING">{t.manufacturing}</option> <option value="Papad">{t.papad}</option><option value="Mushroom">{t.mushroom}</option><option value="Millets">{t.millets}</option><option value="Chilli">{t.chilli}</option><option value="Oil Mill">{t.oilMill}</option><option value="Rice Mill">{t.riceMill}</option><option value="Dairy">{t.dairy}</option><option value="Honey">{t.honey}</option><option value="Dal">{t.dal}</option><option value="Vegitable">{t.vegetable}</option><option value="OTHER">{t.sectorOther}</option></select></div>
               </div>
 
               <div className="preference-card"><div className="preference-icon">💬</div><div className="preference-content"><strong>{t.whatsapp}</strong><span>{t.whatsappHelp}</span></div><label className="switch"><input type="checkbox" checked={form.whatsappAvailable} onChange={(event) => setField("whatsappAvailable", event.target.checked)} /><span className="switch-slider" /></label></div>
