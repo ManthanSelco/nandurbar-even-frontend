@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { api, errorMessage } from "../../lib/api";
 import { Section } from "../../components/UI";
 
+import { getStaff } from "../../lib/auth";
+
 const empty = {
   schemeName:"", shortDescription:"", detailedDescription:"", department:"", ministry:"",
   schemeType:"", category:"", status:"ACTIVE", officialWebsite:"", applicationLink:"",
@@ -13,6 +15,9 @@ const empty = {
 const split=(v:string)=>v.split(",").map(x=>x.trim()).filter(Boolean);
 
 export function GovernmentSchemesPage(){
+
+  const staff = getStaff();
+const isSuperAdmin = staff?.role === "SUPER_ADMIN";
   const [rows,setRows]=useState<any[]>([]),[form,setForm]=useState<any>(empty),[editingId,setEditingId]=useState<string|null>(null);
   const [doc,setDoc]=useState({name:"",url:"",type:"OTHER"}),[link,setLink]=useState({title:"",url:"",type:"OTHER"});
   const [error,setError]=useState(""),[message,setMessage]=useState(""),[loading,setLoading]=useState(false);
@@ -57,7 +62,8 @@ export function GovernmentSchemesPage(){
 
   return <><div className="title"><div><h1>Government Schemes</h1><p>Complete government scheme management using the backend schema.</p></div></div>
   {(error||message)&&<div className={error?"error":"success"}>{error||message}</div>}
-  <Section title={editingId?"Edit government scheme":"Add government scheme"}>
+
+  {isSuperAdmin && ( <Section title={editingId?"Edit government scheme":"Add government scheme"}>
   <form className="grid-form" onSubmit={save}>
     <input required placeholder="Scheme name *" value={form.schemeName} onChange={e=>set("schemeName",e.target.value)}/>
     <input placeholder="Ministry" value={form.ministry} onChange={e=>set("ministry",e.target.value)}/>
@@ -110,7 +116,14 @@ export function GovernmentSchemesPage(){
 
     <div className="full"><button className="primary" disabled={loading}>{loading?"Saving...":editingId?"Update scheme":"Create scheme"}</button>{editingId&&<button type="button" onClick={()=>{setEditingId(null);setForm(empty)}}>Cancel</button>}</div>
   </form></Section>
+  )}
 
-  <Section title="Government scheme list">{rows.length===0?<div className="empty">No schemes.</div>:<div className="table-wrap"><table><thead><tr><th>Scheme</th><th>Ministry</th><th>Department</th><th>Category</th><th>Status</th><th>Actions</th></tr></thead><tbody>{rows.map(s=><tr key={s._id}><td>{s.schemeName}</td><td>{s.ministry||"—"}</td><td>{s.department||"—"}</td><td>{s.category||"—"}</td><td>{s.status}</td><td><button onClick={()=>edit(s)}>Edit</button> <button onClick={()=>remove(s._id)}>Delete</button></td></tr>)}</tbody></table></div>}</Section>
+  <Section title="Government scheme list">{rows.length===0?<div className="empty">No schemes.</div>:<div className="table-wrap"><table><thead><tr><th>Scheme</th><th>Ministry</th><th>Department</th><th>Category</th><th>Status</th><th>Actions</th></tr></thead><tbody>{rows.map(s=><tr key={s._id}><td>{s.schemeName}</td><td>{s.ministry||"—"}</td><td>{s.department||"—"}</td><td>{s.category||"—"}</td><td>{s.status}</td><td>{isSuperAdmin && (
+  <>
+    <button onClick={()=>edit(s)}>Edit</button>
+    <button onClick={()=>remove(s._id)}>Delete</button>
+  </>
+)}</td></tr>)}</tbody></table></div>}</Section>
   </>;
+  
 }

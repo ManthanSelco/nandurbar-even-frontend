@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, errorMessage } from "../../lib/api";
+import { getStaff } from "../../lib/auth";
+
 import { Section } from "../../components/UI";
 
 const emptyVendor = {
@@ -14,6 +16,9 @@ const emptyVendor = {
 const split = (v: string) => v.split(",").map(x => x.trim()).filter(Boolean);
 
 export function VendorsPage() {
+const staff = getStaff();
+const isSuperAdmin = staff?.role === "SUPER_ADMIN";
+
   const [rows, setRows] = useState<any[]>([]);
   const [form, setForm] = useState<any>(emptyVendor);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -164,7 +169,15 @@ export function VendorsPage() {
     <Section title="Vendor list">
       {rows.length===0 ? <div className="empty">No vendors.</div> :
       <div className="table-wrap"><table><thead><tr><th>Name</th><th>Geography</th><th>Value Chain</th><th>SELCO</th><th>Status</th><th>Actions</th></tr></thead>
-      <tbody>{rows.map(v=><tr key={v._id}><td>{v.name}</td><td>{v.geography}</td><td>{v.valueChain||"—"}</td><td>{v.selcoEmpanelled?"Yes":"No"}</td><td>{v.status}</td><td><button onClick={()=>edit(v)}>Edit</button> <button onClick={()=>remove(v._id)}>Delete</button></td></tr>)}</tbody></table></div>}
+      <tbody>{rows.map(v=><tr key={v._id}><td>{v.name}</td><td>{v.geography}</td><td>{v.valueChain||"—"}</td><td>{v.selcoEmpanelled?"Yes":"No"}</td><td>{v.status}</td><td>
+  <button onClick={() => edit(v)}>Edit</button>
+
+  {isSuperAdmin && (
+    <button onClick={() => remove(v._id)}>
+      Delete
+    </button>
+  )}
+</td></tr>)}</tbody></table></div>}
     </Section>
   </>;
 }

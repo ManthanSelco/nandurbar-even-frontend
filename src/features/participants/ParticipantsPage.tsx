@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
+
 import { Link } from "react-router-dom";
+import { getStaff } from "../../lib/auth";
+
 import {
   Filter,
   RotateCcw,
@@ -63,6 +66,12 @@ const emptyFilters: ParticipantFilters = {
 };
 
 export function ParticipantsPage() {
+
+
+  const staff = getStaff();
+const isSuperAdmin = staff?.role === "SUPER_ADMIN";
+
+
   const [rows, setRows] = useState<any[]>([]);
   const [stats, setStats] = useState<any>(null);
 
@@ -720,8 +729,53 @@ export function ParticipantsPage() {
               stats.selfQr || 0
             )}
           />
+
+
+
+
+
         </div>
       )}
+
+
+      {stats && (
+  <div className="stats">
+    <Stat
+      label="Assessment - In Progress"
+      value={String(
+        stats.byAssessment?.find(
+          (item: any) => item._id === "IN_PROGRESS"
+        )?.count || 0
+      )}
+      hint="participants"
+    />
+
+    <Stat
+      label="Assessment - Completed"
+      value={String(
+        stats.byAssessment?.find(
+          (item: any) => item._id === "COMPLETED"
+        )?.count || 0
+      )}
+      hint="participants"
+    />
+
+    <Stat
+      label="Assessment - Not Started"
+      value={String(
+        stats.byAssessment?.find(
+          (item: any) => item._id === "NOT_STARTED"
+        )?.count || 0
+      )}
+      hint="participants"
+    />
+  </div>
+)}
+
+
+
+
+
 
       <Section
         title="Demand overview"
@@ -1068,7 +1122,7 @@ export function ParticipantsPage() {
       {/* BULK POST EVENT ACTION                          */}
       {/* ------------------------------------------------ */}
 
-      {selectedParticipants.length >
+      {  isSuperAdmin && selectedParticipants.length >
         0 && (
         <div className="bulk-post-event-bar">
           <div>
@@ -1451,20 +1505,20 @@ export function ParticipantsPage() {
                           </td>
 
                           <td>
-                            <button
-                              title="Delete participant"
-                              onClick={() =>
-                                void removeParticipant(
-                                  participant._id,
-                                  participant.name
-                                )
-                              }
-                            >
-                              <Trash2
-                                size={14}
-                              />
-                              Delete
-                            </button>
+                           {isSuperAdmin && (
+  <button
+    title="Delete participant"
+    onClick={() =>
+      void removeParticipant(
+        participant._id,
+        participant.name
+      )
+    }
+  >
+    <Trash2 size={14} />
+    Delete
+  </button>
+)}
                           </td>
                         </tr>
                       );

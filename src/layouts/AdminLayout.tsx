@@ -12,12 +12,13 @@ const items: any[] = [
   ["/admin/participants", "Participants", Users],
   ["/admin/volunteers", "Volunteers", UserRoundCog],
   ["/admin/vendors", "Vendors", Store],
+  ["/admin/staff", "Staff Management", Users, "SUPER_ADMIN"],
   ["/admin/government-schemes", "Government Schemes", Landmark],
   ["/admin/requirements", "Requirements", ClipboardList],
-  ["/admin/questions", "Questions", HelpCircle],
+  ["/admin/questions", "Questions", HelpCircle, "SUPER_ADMIN"],
   ["/admin/qr", "Registration QR", QrCode],
   ["/admin/journey", "Participant Journey", Route],
-  ["/admin/whatsapp", "WhatsApp", MessageCircle],
+  ["/admin/whatsapp", "WhatsApp", MessageCircle, "SUPER_ADMIN"],
 ];
 
 export function AdminLayout() {
@@ -38,11 +39,28 @@ export function AdminLayout() {
         </div>
         <div className="sidebar-event"><span className="live-dot"/> Nandurbar Event <small>20–21 Aug</small></div>
         <nav className="sidebar-nav">
-          {items.map(([to, n, I]) => (
-            <NavLink key={to} to={to} onClick={() => setOpen(false)} className={({ isActive }) => isActive ? "nav active" : "nav"}>
-              <I size={17} strokeWidth={1.9} /><span>{n}</span>
-            </NavLink>
-          ))}
+        
+        
+          {items
+  .filter(
+    ([, , , requiredRole]) =>
+      !requiredRole || requiredRole === s?.role
+  )
+  .map(([to, n, I]) => (
+    <NavLink
+      key={to}
+      to={to}
+      onClick={() => setOpen(false)}
+      className={({ isActive }) =>
+        isActive ? "nav active" : "nav"
+      }
+    >
+      <I size={17} strokeWidth={1.9} />
+      <span>{n}</span>
+    </NavLink>
+  ))}
+
+
         </nav>
         <div className="sidefoot">
           <div className="staff-card"><div className="avatar">{String(s?.name || "SA").slice(0,1).toUpperCase()}</div><div><strong>{s?.name || "Super Admin"}</strong><small>{s?.email || "Admin account"}</small></div></div>
