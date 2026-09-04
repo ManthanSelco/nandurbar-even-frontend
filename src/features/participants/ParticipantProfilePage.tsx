@@ -587,7 +587,7 @@ const [editingImplementation, setEditingImplementation] =
     );
   };
 
-  const addLocalDocument = async (
+ const addLocalDocument = async (
   type:
     | "sitePhotos"
     | "machineryPhotos"
@@ -602,12 +602,6 @@ const [editingImplementation, setEditingImplementation] =
 
   try {
     const selectedFiles = Array.from(files);
-
-    // Electricity bill = only one file
-    if (type === "electricityBill" && selectedFiles.length > 1) {
-      setError("Only one electricity bill can be uploaded.");
-      return;
-    }
 
     const formData = new FormData();
 
@@ -628,30 +622,22 @@ const [editingImplementation, setEditingImplementation] =
     setAssessment((prev: any) => {
       const currentDocuments = prev?.documents || {};
 
-      if (type === "electricityBill") {
-        return {
-          ...prev,
-          documents: {
-            ...currentDocuments,
-            electricityBill:
-              uploadedDocuments[0] || null,
-          },
-        };
-      }
-
       return {
         ...prev,
         documents: {
           ...currentDocuments,
           [type]: [
-            ...(currentDocuments[type] || []),
+            ...(Array.isArray(currentDocuments[type])
+              ? currentDocuments[type]
+              : currentDocuments[type]
+                ? [currentDocuments[type]]
+                : []),
             ...uploadedDocuments,
           ],
         },
       };
     });
 
-    // Keep participant assessment status in sync
     if (response.data?.data?.assessmentStatus) {
       setP((prev: any) =>
         prev
@@ -892,7 +878,16 @@ const saveInterventionFromModal = async () => {
   setInterventionDraft(null);
 };
 
+const handleDocumentView = (file: any) => {
+  if (!file?.fileUrl) return;
 
+  if (file.fileType === "application/pdf") {
+    window.open(file.fileUrl, "_blank", "noopener,noreferrer");
+    return;
+  }
+
+  setPreviewImage(file.fileUrl);
+};
 
   const updateIntervention = async (
     interventionId: string,
@@ -5152,33 +5147,35 @@ const saveImplementationModal = async () => {
               </label>
 
               <label className="document-upload">
-                <Upload size={20} />
-                <strong>
-                  Electricity bill
-                  {Boolean(
-                    assessment?.documents
-                      ?.electricityBill
-                  ) && (
-                    <span className="tag green">
-                      1
-                    </span>
-                  )}
-                </strong>
-                <span>
-                  Upload electricity bill
-                </span>
+  <Upload size={20} />
 
-                <input
-                  type="file"
-                  accept="image/*,.pdf"
-                  onChange={(e) =>
-                    addLocalDocument(
-                      "electricityBill",
-                      e.target.files
-                    )
-                  }
-                />
-              </label>
+  <strong>
+    Electricity bills
+    {Boolean(
+      assessment?.documents?.electricityBill?.length
+    ) && (
+      <span className="tag green">
+        {assessment.documents.electricityBill.length}
+      </span>
+    )}
+  </strong>
+
+  <span>
+    Upload multiple electricity bills
+  </span>
+
+  <input
+    type="file"
+    accept="image/*,.pdf"
+    multiple
+    onChange={(e) =>
+      addLocalDocument(
+        "electricityBill",
+        e.target.files
+      )
+    }
+  />
+</label>
 
     <label className="document-upload">
   <Upload size={20} />
@@ -5212,71 +5209,57 @@ const saveImplementationModal = async () => {
 </label>
             </div>
 
-            <div className="assessment-document-preview">
-             <DocumentList
-  title="Site photos"
-  files={assessment?.documents?.sitePhotos || []}
-  onDelete={(file) =>
-    deleteAssessmentDocument("sitePhotos", file)
-  }
-  deletingFileKey={deletingFileKey}
-  onView={(file) =>
-    setPreviewImage(file.fileUrl)
-  }
-/>
+  <div className="assessment-document-preview">
+  <DocumentList
+    title="Site photos"
+    files={assessment?.documents?.sitePhotos || []}
+    onDelete={(file) =>
+      deleteAssessmentDocument("sitePhotos", file)
+    }
+    deletingFileKey={deletingFileKey}
+    onView={handleDocumentView}
+  />
 
-<DocumentList
-  title="Other documents"
-  files={assessment?.documents?.otherDocuments || []}
-  onDelete={(file) =>
-    deleteAssessmentDocument("otherDocuments", file)
-  }
-  deletingFileKey={deletingFileKey}
-  onView={(file) =>
-    setPreviewImage(file.fileUrl)
-  }
-/>
+  <DocumentList
+    title="Other documents"
+    files={assessment?.documents?.otherDocuments || []}
+    onDelete={(file) =>
+      deleteAssessmentDocument("otherDocuments", file)
+    }
+    deletingFileKey={deletingFileKey}
+    onView={handleDocumentView}
+  />
 
-           <DocumentList
-  title="Machinery photos"
-  files={assessment?.documents?.machineryPhotos || []}
-  onDelete={(file) =>
-    deleteAssessmentDocument("machineryPhotos", file)
-  }
-  deletingFileKey={deletingFileKey}
-  onView={(file) =>
-    setPreviewImage(file.fileUrl)
-  }
-/>
+  <DocumentList
+    title="Machinery photos"
+    files={assessment?.documents?.machineryPhotos || []}
+    onDelete={(file) =>
+      deleteAssessmentDocument("machineryPhotos", file)
+    }
+    deletingFileKey={deletingFileKey}
+    onView={handleDocumentView}
+  />
 
-        <DocumentList
-  title="Product photos"
-  files={assessment?.documents?.productPhotos || []}
-  onDelete={(file) =>
-    deleteAssessmentDocument("productPhotos", file)
-  }
-  deletingFileKey={deletingFileKey}
-  onView={(file) =>
-    setPreviewImage(file.fileUrl)
-  }
-/>
+  <DocumentList
+    title="Product photos"
+    files={assessment?.documents?.productPhotos || []}
+    onDelete={(file) =>
+      deleteAssessmentDocument("productPhotos", file)
+    }
+    deletingFileKey={deletingFileKey}
+    onView={handleDocumentView}
+  />
 
-              {assessment?.documents
-                ?.electricityBill && (
-                <div className="document-list">
-                  <strong>
-                    Electricity bill
-                  </strong>
-
-                  <span>
-                    {
-                      assessment.documents
-                        .electricityBill.fileName
-                    }
-                  </span>
-                </div>
-              )}
-            </div>
+  <DocumentList
+    title="Electricity bill"
+    files={assessment?.documents?.electricityBill || []}
+    onDelete={(file) =>
+      deleteAssessmentDocument("electricityBill", file)
+    }
+    deletingFileKey={deletingFileKey}
+    onView={handleDocumentView}
+  />
+</div>
           </Section>
 
           <Section
@@ -7299,5 +7282,7 @@ function DocumentList({
       )}
     </div>
   );
+
+  
 }
 
