@@ -17,6 +17,7 @@ import {
   Save,
   ChevronRight,
    Mic,
+    Eye
 } from "lucide-react";
 import { api, errorMessage } from "../../lib/api";
 import { PageHeader, Section } from "../../components/UI";
@@ -7260,18 +7261,25 @@ function DocumentList({
                     type="button"
                     onClick={() => onView(file)}
                     disabled={isDeleting}
+                    title="View document"
+                    className="document-icon-button view"
                   >
-                    View
+                    <Eye size={17} />
                   </button>
                 )}
 
-                <button
+                   <button
                   type="button"
                   onClick={() => onDelete(file)}
                   disabled={isDeleting}
                   title="Delete document"
+                  className="document-icon-button delete"
                 >
-                  {isDeleting ? "Deleting..." : "Delete"}
+                  {isDeleting ? (
+                    "..."
+                  ) : (
+                    <Trash2 size={17} />
+                  )}
                 </button>
               </div>
             </div>
