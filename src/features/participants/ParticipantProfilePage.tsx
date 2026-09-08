@@ -882,11 +882,31 @@ const saveInterventionFromModal = async () => {
 const handleDocumentView = (file: any) => {
   if (!file?.fileUrl) return;
 
-  if (file.fileType === "application/pdf") {
+  const fileType = file.fileType?.toLowerCase() || "";
+  const fileName = file.fileName?.toLowerCase() || "";
+
+  // PDF
+  if (
+    fileType === "application/pdf" ||
+    fileName.endsWith(".pdf")
+  ) {
     window.open(file.fileUrl, "_blank", "noopener,noreferrer");
     return;
   }
 
+  // Word DOC / DOCX
+  if (
+    fileType === "application/msword" ||
+    fileType ===
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+    fileName.endsWith(".doc") ||
+    fileName.endsWith(".docx")
+  ) {
+    window.open(file.fileUrl, "_blank", "noopener,noreferrer");
+    return;
+  }
+
+  // Images
   setPreviewImage(file.fileUrl);
 };
 
@@ -5193,12 +5213,12 @@ const saveImplementationModal = async () => {
   </strong>
 
   <span>
-    Upload multiple supporting documents
+    Upload multiple supporting documents(pdf, doc, images)
   </span>
 
   <input
     type="file"
-    accept="image/*,.pdf"
+     accept="image/*,.pdf,.doc,.docx"
     multiple
     onChange={(e) =>
       addLocalDocument(
