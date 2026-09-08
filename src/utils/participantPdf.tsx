@@ -8,18 +8,116 @@ const PAGE_HEIGHT = 297;
 const MARGIN = 14;
 const CONTENT_WIDTH = PAGE_WIDTH - MARGIN * 2;
 
-const safe = (value: any) => {
-  if (value === null || value === undefined || value === "") return "—";
+let cursorY = MARGIN;
+
+/* -------------------------------------------------------------------------- */
+/* COLORS                                                                     */
+/* -------------------------------------------------------------------------- */
+
+const COLORS = {
+  dark: [30, 41, 59] as [number, number, number],
+  text: [51, 65, 85] as [number, number, number],
+  muted: [100, 116, 139] as [number, number, number],
+  light: [241, 245, 249] as [number, number, number],
+  border: [203, 213, 225] as [number, number, number],
+  white: [255, 255, 255] as [number, number, number],
+  accent: [37, 99, 235] as [number, number, number],
+  success: [22, 163, 74] as [number, number, number],
+};
+
+/* -------------------------------------------------------------------------- */
+/* BASIC HELPERS                                                              */
+/* -------------------------------------------------------------------------- */
+
+const isObject = (value: any): value is AnyObject =>
+  value !== null &&
+  typeof value === "object" &&
+  !Array.isArray(value);
+
+const safe = (value: any): string => {
+  if (value === null || value === undefined || value === "") {
+    return "—";
+  }
 
   if (typeof value === "boolean") {
     return value ? "Yes" : "No";
   }
 
   if (Array.isArray(value)) {
-    return value.length ? value.join(", ") : "—";
+    if (!value.length) return "—";
+
+    return (
+      value
+        .map((item) => safe(item))
+        .filter((item) => item !== "—")
+        .join(", ") || "—"
+    );
   }
 
   if (typeof value === "object") {
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return "—";
+    }
+  }
+
+  return String(value);
+};
+
+const cleanText = (value: any): string => {
+  if (value === null || value === undefined || value === "") {
+    return "—";
+  }
+
+  if (typeof value === "string") {
+    const text = value.trim();
+
+    if (!text) return "—";
+
+    return text;
+  }
+
+  if (
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ) {
+    return String(value);
+  }
+
+  if (Array.isArray(value)) {
+    const values = value
+      .map((item) => cleanText(item))
+      .filter((item) => item !== "—");
+
+    return values.length ? values.join(", ") : "—";
+  }
+
+  if (isObject(value)) {
+    const nestedKeys = [
+      "answer",
+      "value",
+      "response",
+      "text",
+      "label",
+      "name",
+      "description",
+    ];
+
+    for (const key of nestedKeys) {
+      if (
+        value[key] !== undefined &&
+        value[key] !== null &&
+        value[key] !== ""
+      ) {
+        const result = cleanText(value[key]);
+
+        if (result !== "—") {
+          return result;
+        }
+      }
+    }
+
     try {
       return JSON.stringify(value);
     } catch {
@@ -72,6 +170,12 @@ const statusLabel = (value: any) => {
     .replace(/\b\w/g, (char) => char.toUpperCase());
 };
 
+const humanizeKey = (value: string) =>
+  String(value)
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+
 const solutionLabel = (value: any) => {
   const labels: Record<string, string> = {
     TECHNOLOGY_MACHINERY: "Technology / Machinery",
@@ -88,127 +192,427 @@ const solutionLabel = (value: any) => {
   return labels[value] || statusLabel(value);
 };
 
-const ensurePageSpace = (doc: jsPDF, requiredHeight = 20) => {
-  const pageHeight = doc.internal.pageSize.getHeight();
+/* -------------------------------------------------------------------------- */
+/* PARTICIPANT RESOLVERS                                                      */
+/* -------------------------------------------------------------------------- */
 
-  if (cursorY + requiredHeight > pageHeight - MARGIN) {
-    doc.addPage();
-    cursorY = MARGIN;
-    addPageHeader(doc);
+const getParticipantName = (participant: AnyObject) =>
+  participant?.name ||
+  participant?.fullName ||
+  participant?.participantName ||
+  participant?.personalDetails?.name ||
+  participant?.profile?.name ||
+  "Participant";
+
+const getParticipantMobile = (participant: AnyObject) => {
+  const mobile =
+    participant?.mobile ||
+    participant?.phone ||
+    participant?.mobileNumber ||
+    participant?.contactNumber ||
+    participant?.contact?.mobile ||
+    participant?.contact?.mobileNumber;
+
+  if (!mobile) return "—";
+
+  const countryCode =
+    participant?.countryCode ||
+    participant?.contact?.countryCode;
+
+  if (
+    countryCode &&
+    !String(mobile).startsWith(String(countryCode))
+  ) {
+    return `${countryCode} ${mobile}`;
   }
+
+  return String(mobile);
 };
 
-let cursorY = MARGIN;
+const getParticipantEmail = (participant: AnyObject) =>
+  participant?.email ||
+  participant?.contact?.email ||
+  participant?.profile?.email ||
+  "—";
+
+const getParticipantLocation = (participant: AnyObject) => {
+  const address = participant?.address;
+
+  if (typeof address === "string") {
+    return address;
+  }
+
+  return (
+    participant?.location ||
+    participant?.village ||
+    participant?.locationName ||
+    address?.village ||
+    address?.location ||
+    address?.city ||
+    address?.district ||
+    "—"
+  );
+};
+
+const getOrganizationName = (participant: AnyObject) =>
+  participant?.organizationName ||
+  participant?.organisationName ||
+  participant?.organization ||
+  participant?.organisation ||
+  participant?.businessName ||
+  "—";
+
+const getOrganizationType = (participant: AnyObject) =>
+  participant?.organizationType ||
+  participant?.organisationType ||
+  participant?.organization?.type ||
+  "—";
+
+const getSector = (participant: AnyObject) =>
+  participant?.sector ||
+  participant?.profile?.sector ||
+  participant?.business?.sector ||
+  "—";
+
+const getLivelihood = (participant: AnyObject) =>
+  participant?.livelihoodCategory ||
+  participant?.livelihood?.category ||
+  participant?.profile?.livelihoodCategory ||
+  "—";
+
+const getLanguage = (participant: AnyObject) =>
+  participant?.preferredLanguage ||
+  participant?.language ||
+  participant?.profile?.preferredLanguage ||
+  "—";
+
+/* -------------------------------------------------------------------------- */
+/* PAGE MANAGEMENT                                                            */
+/* -------------------------------------------------------------------------- */
 
 const addPageHeader = (doc: jsPDF) => {
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(8);
-  doc.setTextColor(110, 110, 110);
+  doc.setFontSize(7.5);
+  doc.setTextColor(...COLORS.muted);
 
   doc.text(
-    "SELCO Foundation × KVK | Nandurbar Mela 2026",
+    "SELCO Foundation × KVK",
     MARGIN,
     8
   );
 
-  doc.setTextColor(0, 0, 0);
+  doc.text(
+    "NANDURBAR MELA 2026",
+    PAGE_WIDTH - MARGIN,
+    8,
+    { align: "right" }
+  );
 };
 
-const addSectionTitle = (doc: jsPDF, title: string) => {
-  ensurePageSpace(doc, 15);
+const ensurePageSpace = (
+  doc: jsPDF,
+  requiredHeight = 20
+) => {
+  const pageHeight = doc.internal.pageSize.getHeight();
+
+  if (
+    cursorY + requiredHeight >
+    pageHeight - MARGIN
+  ) {
+    doc.addPage();
+
+    cursorY = MARGIN + 5;
+
+    addPageHeader(doc);
+  }
+};
+
+/* -------------------------------------------------------------------------- */
+/* SECTION UI                                                                 */
+/* -------------------------------------------------------------------------- */
+
+const addSectionTitle = (
+  doc: jsPDF,
+  title: string,
+  subtitle?: string
+) => {
+  ensurePageSpace(doc, subtitle ? 23 : 17);
+
+  doc.setFillColor(...COLORS.dark);
+
+  doc.roundedRect(
+    MARGIN,
+    cursorY,
+    CONTENT_WIDTH,
+    subtitle ? 17 : 12,
+    2,
+    2,
+    "F"
+  );
 
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(13);
-  doc.setTextColor(30, 30, 30);
+  doc.setFontSize(11);
+  doc.setTextColor(...COLORS.white);
 
-  doc.text(title, MARGIN, cursorY);
+  doc.text(
+    title,
+    MARGIN + 5,
+    cursorY + 7.5
+  );
 
-  cursorY += 7;
+  if (subtitle) {
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7);
+    doc.setTextColor(226, 232, 240);
 
-  doc.setDrawColor(190, 190, 190);
-  doc.line(MARGIN, cursorY, PAGE_WIDTH - MARGIN, cursorY);
+    doc.text(
+      subtitle,
+      MARGIN + 5,
+      cursorY + 13
+    );
+  }
 
-  cursorY += 6;
+  cursorY += subtitle ? 23 : 18;
 };
 
 const addField = (
   doc: jsPDF,
   label: string,
   value: any,
-  labelWidth = 55
+  labelWidth = 50
 ) => {
-  const text = safe(value);
-
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(9);
-  doc.setTextColor(70, 70, 70);
-
-  doc.text(label, MARGIN, cursorY);
+  const text = cleanText(value);
 
   const valueX = MARGIN + labelWidth;
 
-  doc.setFont("helvetica", "normal");
-  doc.setTextColor(25, 25, 25);
+  const availableWidth =
+    PAGE_WIDTH - MARGIN - valueX;
 
   const lines = doc.splitTextToSize(
     text,
-    PAGE_WIDTH - MARGIN - valueX
+    availableWidth
   );
 
-  ensurePageSpace(doc, Math.max(8, lines.length * 4.5));
+  const height = Math.max(
+    7,
+    lines.length * 4.2 + 3
+  );
 
-  doc.text(lines, valueX, cursorY);
+  ensurePageSpace(doc, height + 2);
 
-  cursorY += Math.max(6, lines.length * 4.5);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8);
+  doc.setTextColor(...COLORS.muted);
+
+  doc.text(
+    label,
+    MARGIN,
+    cursorY
+  );
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8.5);
+  doc.setTextColor(...COLORS.text);
+
+  doc.text(
+    lines,
+    valueX,
+    cursorY
+  );
+
+  cursorY += height;
 };
 
-const addParagraph = (doc: jsPDF, text: any) => {
-  const value = safe(text);
+const addParagraph = (
+  doc: jsPDF,
+  text: any
+) => {
+  const value = cleanText(text);
 
   const lines = doc.splitTextToSize(
     value,
     CONTENT_WIDTH
   );
 
-  ensurePageSpace(doc, lines.length * 4.5 + 5);
+  ensurePageSpace(
+    doc,
+    lines.length * 4.2 + 6
+  );
 
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(9);
-  doc.setTextColor(35, 35, 35);
+  doc.setFontSize(8.5);
+  doc.setTextColor(...COLORS.text);
 
-  doc.text(lines, MARGIN, cursorY);
+  doc.text(
+    lines,
+    MARGIN,
+    cursorY
+  );
 
-  cursorY += lines.length * 4.5 + 4;
+  cursorY +=
+    lines.length * 4.2 + 5;
 };
+
+/* -------------------------------------------------------------------------- */
+/* INFO CARDS                                                                 */
+/* -------------------------------------------------------------------------- */
+
+const addInfoCards = (
+  doc: jsPDF,
+  cards: {
+    label: string;
+    value: any;
+  }[]
+) => {
+  const gap = 4;
+
+  const cardWidth =
+    (CONTENT_WIDTH - gap) / 2;
+
+  const cardHeight = 17;
+
+  for (
+    let i = 0;
+    i < cards.length;
+    i += 2
+  ) {
+    ensurePageSpace(
+      doc,
+      cardHeight + 5
+    );
+
+    const pair = cards.slice(
+      i,
+      i + 2
+    );
+
+    pair.forEach(
+      (card, index) => {
+        const x =
+          MARGIN +
+          index *
+            (cardWidth + gap);
+
+        doc.setFillColor(
+          ...COLORS.light
+        );
+
+        doc.setDrawColor(
+          ...COLORS.border
+        );
+
+        doc.roundedRect(
+          x,
+          cursorY,
+          cardWidth,
+          cardHeight,
+          2,
+          2,
+          "FD"
+        );
+
+        doc.setFont(
+          "helvetica",
+          "bold"
+        );
+
+        doc.setFontSize(6.8);
+
+        doc.setTextColor(
+          ...COLORS.muted
+        );
+
+        doc.text(
+          String(card.label).toUpperCase(),
+          x + 4,
+          cursorY + 5
+        );
+
+        doc.setFont(
+          "helvetica",
+          "normal"
+        );
+
+        doc.setFontSize(8.2);
+
+        doc.setTextColor(
+          ...COLORS.dark
+        );
+
+        const value =
+          cleanText(card.value);
+
+        const lines =
+          doc.splitTextToSize(
+            value,
+            cardWidth - 8
+          );
+
+        doc.text(
+          lines.slice(0, 2),
+          x + 4,
+          cursorY + 11
+        );
+      }
+    );
+
+    cursorY +=
+      cardHeight + 4;
+  }
+};
+
+/* -------------------------------------------------------------------------- */
+/* TABLE                                                                      */
+/* -------------------------------------------------------------------------- */
 
 const addTable = (
   doc: jsPDF,
   headers: string[],
   rows: any[][]
 ) => {
-  ensurePageSpace(doc, 30);
+  if (!rows.length) return;
+
+  ensurePageSpace(doc, 25);
 
   autoTable(doc, {
     startY: cursorY,
+
     head: [headers],
-    body: rows.map((row) => row.map(safe)),
+
+    body: rows.map((row) =>
+      row.map((value) =>
+        cleanText(value)
+      )
+    ),
+
     margin: {
       left: MARGIN,
       right: MARGIN,
+      bottom: 15,
     },
+
     styles: {
       font: "helvetica",
-      fontSize: 8,
+      fontSize: 7.5,
       cellPadding: 3,
       overflow: "linebreak",
       valign: "top",
+      textColor: COLORS.text,
+      lineColor: COLORS.border,
+      lineWidth: 0.15,
     },
+
     headStyles: {
+      fillColor: COLORS.dark,
+      textColor: COLORS.white,
       fontStyle: "bold",
+      fontSize: 7.5,
     },
-    bodyStyles: {
-      textColor: [35, 35, 35],
+
+    alternateRowStyles: {
+      fillColor: [248, 250, 252],
     },
+
     didDrawPage: () => {
       addPageHeader(doc);
     },
@@ -221,227 +625,665 @@ const addTable = (
   cursorY += 7;
 };
 
-const blobToDataUrl = (blob: Blob): Promise<string> =>
+/* -------------------------------------------------------------------------- */
+/* IMAGE HELPERS                                                              */
+/* -------------------------------------------------------------------------- */
+
+const blobToDataUrl = (
+  blob: Blob
+): Promise<string> =>
   new Promise((resolve, reject) => {
     const reader = new FileReader();
 
-    reader.onload = () => resolve(String(reader.result));
+    reader.onload = () =>
+      resolve(String(reader.result));
+
     reader.onerror = reject;
 
     reader.readAsDataURL(blob);
   });
 
-const getImageDimensions = (
+const loadImage = (
   dataUrl: string
-): Promise<{ width: number; height: number }> =>
-  new Promise((resolve) => {
+): Promise<HTMLImageElement> =>
+  new Promise((resolve, reject) => {
     const img = new Image();
 
-    img.onload = () => {
-      resolve({
-        width: img.naturalWidth || 1,
-        height: img.naturalHeight || 1,
-      });
-    };
+    img.onload = () =>
+      resolve(img);
 
-    img.onerror = () => {
-      resolve({
-        width: 1,
-        height: 1,
-      });
-    };
+    img.onerror = () =>
+      reject(
+        new Error(
+          "Unable to load image"
+        )
+      );
 
     img.src = dataUrl;
   });
 
 const fetchImageAsDataUrl = async (
-  url: string
+  url: string,
+  fileName?: string
 ): Promise<string | null> => {
   try {
-    const response = await fetch(url);
+    if (!url) return null;
+
+    const response =
+      await fetch(url);
 
     if (!response.ok) {
+      console.error(
+        "PDF image fetch failed:",
+        response.status,
+        fileName
+      );
+
       return null;
     }
 
-    const blob = await response.blob();
+    const blob =
+      await response.blob();
 
-    if (!blob.type.startsWith("image/")) {
+    if (
+      !blob.type.startsWith("image/")
+    ) {
+      console.error(
+        "PDF file is not image:",
+        blob.type,
+        fileName
+      );
+
       return null;
     }
 
     return await blobToDataUrl(blob);
-  } catch {
+  } catch (error) {
+    console.error(
+      "PDF image fetch error:",
+      fileName,
+      error
+    );
+
     return null;
   }
 };
 
-const addImage = async (
-  doc: jsPDF,
+const convertImageToJpeg = async (
+  dataUrl: string
+) => {
+  const img =
+    await loadImage(dataUrl);
+
+  const canvas =
+    document.createElement(
+      "canvas"
+    );
+
+  canvas.width =
+    img.naturalWidth || 1;
+
+  canvas.height =
+    img.naturalHeight || 1;
+
+  const context =
+    canvas.getContext("2d");
+
+  if (!context) {
+    throw new Error(
+      "Canvas context unavailable"
+    );
+  }
+
+  context.fillStyle = "#ffffff";
+
+  context.fillRect(
+    0,
+    0,
+    canvas.width,
+    canvas.height
+  );
+
+  context.drawImage(
+    img,
+    0,
+    0,
+    canvas.width,
+    canvas.height
+  );
+
+  return canvas.toDataURL(
+    "image/jpeg",
+    0.9
+  );
+};
+
+const getImageData = async (
   url: string,
   fileName?: string
 ) => {
-  if (!url) return;
-
-  const dataUrl = await fetchImageAsDataUrl(url);
+  const dataUrl =
+    await fetchImageAsDataUrl(
+      url,
+      fileName
+    );
 
   if (!dataUrl) {
+    return null;
+  }
+
+  const mimeMatch =
+    dataUrl.match(
+      /^data:image\/([^;]+);base64,/i
+    );
+
+  const mime =
+    mimeMatch?.[1]?.toLowerCase();
+
+  if (
+    mime === "png"
+  ) {
+    return {
+      dataUrl,
+      format: "PNG" as const,
+    };
+  }
+
+  if (
+    mime === "jpeg" ||
+    mime === "jpg"
+  ) {
+    return {
+      dataUrl,
+      format: "JPEG" as const,
+    };
+  }
+
+  return {
+    dataUrl:
+      await convertImageToJpeg(
+        dataUrl
+      ),
+    format: "JPEG" as const,
+  };
+};
+
+/* -------------------------------------------------------------------------- */
+/* IMAGE GALLERY                                                              */
+/* -------------------------------------------------------------------------- */
+
+const addImageGallery = async (
+  doc: jsPDF,
+  title: string,
+  files: any[]
+) => {
+  if (
+    !Array.isArray(files) ||
+    !files.length
+  ) {
     return;
   }
 
-  const dimensions = await getImageDimensions(dataUrl);
-
-  const maxWidth = CONTENT_WIDTH;
-  const maxHeight = 90;
-
-  let width = maxWidth;
-  let height =
-    (dimensions.height / dimensions.width) * width;
-
-  if (height > maxHeight) {
-    height = maxHeight;
-    width =
-      (dimensions.width / dimensions.height) * height;
-  }
-
-  ensurePageSpace(doc, height + 20);
-
-  doc.addImage(
-    dataUrl,
-    "JPEG",
-    MARGIN,
-    cursorY,
-    width,
-    height
+  addSectionTitle(
+    doc,
+    title,
+    `${files.length} file${
+      files.length === 1
+        ? ""
+        : "s"
+    }`
   );
 
-  cursorY += height + 5;
+  const gap = 5;
 
-  if (fileName) {
-    doc.setFontSize(7);
-    doc.setTextColor(100, 100, 100);
+  const cardWidth =
+    (CONTENT_WIDTH - gap) / 2;
 
-    doc.text(fileName, MARGIN, cursorY);
+  const cardHeight = 78;
 
-    cursorY += 5;
+  for (
+    let index = 0;
+    index < files.length;
+    index++
+  ) {
+    const file = files[index];
+
+    if (!file?.fileUrl) {
+      continue;
+    }
+
+    const column =
+      index % 2;
+
+    const row =
+      Math.floor(index / 2);
+
+    if (column === 0) {
+      ensurePageSpace(
+        doc,
+        cardHeight + 5
+      );
+    }
+
+    /*
+     * If a new page was created,
+     * restart gallery row position.
+     */
+    const x =
+      MARGIN +
+      column *
+        (cardWidth + gap);
+
+    const y = cursorY;
+
+    /*
+     * Background card
+     */
+    doc.setFillColor(
+      ...COLORS.white
+    );
+
+    doc.setDrawColor(
+      ...COLORS.border
+    );
+
+    doc.roundedRect(
+      x,
+      y,
+      cardWidth,
+      cardHeight,
+      2,
+      2,
+      "FD"
+    );
+
+    try {
+      const image =
+        await getImageData(
+          file.fileUrl,
+          file.fileName
+        );
+
+      if (image) {
+        const img =
+          await loadImage(
+            image.dataUrl
+          );
+
+        const naturalWidth =
+          img.naturalWidth || 1;
+
+        const naturalHeight =
+          img.naturalHeight || 1;
+
+        const boxX = x + 3;
+        const boxY = y + 3;
+
+        const boxWidth =
+          cardWidth - 6;
+
+        const boxHeight = 62;
+
+        const ratio = Math.min(
+          boxWidth / naturalWidth,
+          boxHeight / naturalHeight
+        );
+
+        const imageWidth =
+          naturalWidth * ratio;
+
+        const imageHeight =
+          naturalHeight * ratio;
+
+        const imageX =
+          boxX +
+          (boxWidth -
+            imageWidth) /
+            2;
+
+        const imageY =
+          boxY +
+          (boxHeight -
+            imageHeight) /
+            2;
+
+        doc.addImage(
+          image.dataUrl,
+          image.format,
+          imageX,
+          imageY,
+          imageWidth,
+          imageHeight
+        );
+      } else {
+        doc.setFont(
+          "helvetica",
+          "normal"
+        );
+
+        doc.setFontSize(8);
+
+        doc.setTextColor(
+          ...COLORS.muted
+        );
+
+        doc.text(
+          "Image unavailable",
+          x + cardWidth / 2,
+          y + 35,
+          {
+            align: "center",
+          }
+        );
+      }
+    } catch (error) {
+      console.error(
+        "PDF gallery image error:",
+        file.fileName,
+        error
+      );
+
+      doc.setFont(
+        "helvetica",
+        "normal"
+      );
+
+      doc.setFontSize(8);
+
+      doc.setTextColor(
+        ...COLORS.muted
+      );
+
+      doc.text(
+        "Unable to load image",
+        x + cardWidth / 2,
+        y + 35,
+        {
+          align: "center",
+        }
+      );
+    }
+
+    /*
+     * Filename
+     */
+    doc.setFont(
+      "helvetica",
+      "normal"
+    );
+
+    doc.setFontSize(6.5);
+
+    doc.setTextColor(
+      ...COLORS.muted
+    );
+
+    const fileName =
+      file.fileName ||
+      "Image";
+
+    const fileLines =
+      doc.splitTextToSize(
+        fileName,
+        cardWidth - 8
+      );
+
+    doc.text(
+      fileLines.slice(0, 1),
+      x + 4,
+      y + 72
+    );
+
+    /*
+     * After second image of row,
+     * move cursor.
+     */
+    if (
+      column === 1 ||
+      index === files.length - 1
+    ) {
+      cursorY +=
+        cardHeight + 5;
+    }
   }
 };
+
+/* -------------------------------------------------------------------------- */
+/* DOCUMENTS                                                                  */
+/* -------------------------------------------------------------------------- */
 
 const addDocuments = async (
   doc: jsPDF,
   title: string,
   files: any[]
 ) => {
-  if (!files?.length) return;
+  if (
+    !Array.isArray(files) ||
+    !files.length
+  ) {
+    return;
+  }
 
-  addSectionTitle(doc, title);
+  const imageFiles: any[] = [];
+  const otherFiles: any[] = [];
 
-  for (const file of files) {
-    if (!file?.fileUrl) continue;
+  files.forEach((file) => {
+    const type =
+      String(
+        file?.fileType || ""
+      ).toLowerCase();
 
-    const fileType = String(
-      file.fileType || ""
-    ).toLowerCase();
+    const name =
+      String(
+        file?.fileName || ""
+      ).toLowerCase();
 
-    if (fileType.includes("image")) {
-      await addImage(
-        doc,
-        file.fileUrl,
-        file.fileName
+    const isImage =
+      type.includes("image") ||
+      /\.(jpg|jpeg|png|webp|gif)$/i.test(
+        name
       );
+
+    if (isImage) {
+      imageFiles.push(file);
     } else {
-      ensurePageSpace(doc, 10);
-
-      addField(
-        doc,
-        "Document",
-        file.fileName || "Document"
-      );
-
-      addField(
-        doc,
-        "Type",
-        file.fileType || "Document"
-      );
+      otherFiles.push(file);
     }
+  });
+
+  if (imageFiles.length) {
+    await addImageGallery(
+      doc,
+      title,
+      imageFiles
+    );
+  } else if (otherFiles.length) {
+    addSectionTitle(
+      doc,
+      title
+    );
+  }
+
+  if (otherFiles.length) {
+    addTable(
+      doc,
+      [
+        "Document",
+        "Type",
+      ],
+      otherFiles.map(
+        (file: any) => [
+          file?.fileName ||
+            "Document",
+
+          file?.fileType ||
+            "Document",
+        ]
+      )
+    );
   }
 };
 
-const getAssessmentDocuments = (
+const normalizeDocuments = (
   assessment: AnyObject
 ) => {
-  const documents = assessment?.documents || {};
+  const documents =
+    assessment?.documents || {};
+
+  const electricityBill =
+    documents.electricityBill;
 
   return {
-    sitePhotos: documents.sitePhotos || [],
-    machineryPhotos: documents.machineryPhotos || [],
-    productPhotos: documents.productPhotos || [],
-    electricityBill: documents.electricityBill
-      ? [documents.electricityBill]
-      : [],
-    otherDocuments: documents.otherDocuments || [],
+    sitePhotos:
+      Array.isArray(
+        documents.sitePhotos
+      )
+        ? documents.sitePhotos
+        : [],
+
+    machineryPhotos:
+      Array.isArray(
+        documents.machineryPhotos
+      )
+        ? documents.machineryPhotos
+        : [],
+
+    productPhotos:
+      Array.isArray(
+        documents.productPhotos
+      )
+        ? documents.productPhotos
+        : [],
+
+    electricityBill:
+      Array.isArray(
+        electricityBill
+      )
+        ? electricityBill
+        : electricityBill
+        ? [electricityBill]
+        : [],
+
+    otherDocuments:
+      Array.isArray(
+        documents.otherDocuments
+      )
+        ? documents.otherDocuments
+        : [],
   };
 };
+
+/* -------------------------------------------------------------------------- */
+/* PARTICIPANT PROFILE                                                        */
+/* -------------------------------------------------------------------------- */
 
 const addRegistrationSection = (
   doc: jsPDF,
   participant: AnyObject
 ) => {
-  addSectionTitle(doc, "Participant Profile");
+  addSectionTitle(
+    doc,
+    "01. Participant Profile",
+    "Registration and participant information"
+  );
 
-  addField(doc, "Name", participant.name);
-  addField(doc, "Mobile", participant.mobile);
-  addField(doc, "Email", participant.email);
-  addField(doc, "Location", participant.location);
+  addInfoCards(doc, [
+    {
+      label: "Participant",
+      value: getParticipantName(
+        participant
+      ),
+    },
+    {
+      label: "Mobile",
+      value: getParticipantMobile(
+        participant
+      ),
+    },
+    {
+      label: "Organisation",
+      value: getOrganizationName(
+        participant
+      ),
+    },
+    {
+      label: "Location",
+      value: getParticipantLocation(
+        participant
+      ),
+    },
+    {
+      label: "Sector",
+      value: statusLabel(
+        getSector(participant)
+      ),
+    },
+    {
+      label: "Livelihood",
+      value: getLivelihood(
+        participant
+      ),
+    },
+    {
+      label: "Assessment",
+      value: statusLabel(
+        participant.assessmentStatus
+      ),
+    },
+    {
+      label: "Implementation",
+      value: statusLabel(
+        participant.implementationStatus
+      ),
+    },
+  ]);
+
   addField(
     doc,
-    "Organisation",
-    participant.organizationName
+    "Email",
+    getParticipantEmail(
+      participant
+    )
   );
+
   addField(
     doc,
     "Organisation Type",
-    statusLabel(participant.organizationType)
+    statusLabel(
+      getOrganizationType(
+        participant
+      )
+    )
   );
-  addField(
-    doc,
-    "Sector",
-    statusLabel(participant.sector)
-  );
-  addField(
-    doc,
-    "Livelihood Category",
-    participant.livelihoodCategory
-  );
+
   addField(
     doc,
     "Preferred Language",
-    participant.preferredLanguage
+    getLanguage(participant)
   );
+
   addField(
     doc,
     "Registration Method",
-    statusLabel(participant.registrationMethod)
+    statusLabel(
+      participant.registrationMethod
+    )
   );
+
   addField(
     doc,
     "Registration Date",
-    formatDateTime(participant.createdAt)
+    formatDateTime(
+      participant.createdAt
+    )
   );
 
-  addField(
-    doc,
-    "Assessment Status",
-    statusLabel(participant.assessmentStatus)
-  );
-
-  addField(
-    doc,
-    "Implementation Status",
-    statusLabel(participant.implementationStatus)
-  );
-
-  if (participant.supportSolutions?.length) {
+  if (
+    Array.isArray(
+      participant.supportSolutions
+    ) &&
+    participant.supportSolutions.length
+  ) {
     addField(
       doc,
       "Required Solutions",
@@ -451,153 +1293,760 @@ const addRegistrationSection = (
     );
   }
 
-  if (participant.requirements?.length) {
-    addSectionTitle(doc, "Post-event Requirements");
+  if (
+    Array.isArray(
+      participant.requirements
+    ) &&
+    participant.requirements.length
+  ) {
+    addSectionTitle(
+      doc,
+      "Post-event Requirements"
+    );
 
     addTable(
       doc,
-      ["Requirement", "Details"],
-      participant.requirements.map((item: any) => [
-        item.title ||
-          item.name ||
-          item.requirement ||
-          "Requirement",
-        item.description ||
-          item.details ||
-          item.value ||
-          "—",
-      ])
+      [
+        "Requirement",
+        "Details",
+      ],
+      participant.requirements.map(
+        (item: any) => [
+          item?.title ||
+            item?.name ||
+            item?.requirement ||
+            "Requirement",
+
+          item?.description ||
+            item?.details ||
+            item?.value ||
+            "—",
+        ]
+      )
     );
   }
 };
+
+/* -------------------------------------------------------------------------- */
+/* ORIGINAL REGISTRATION ANSWERS                                              */
+/* -------------------------------------------------------------------------- */
 
 const addRegistrationAnswers = (
   doc: jsPDF,
   participant: AnyObject,
   questions: AnyObject[]
 ) => {
-  if (!questions?.length && !participant?.answers?.length) {
+  const answers =
+    Array.isArray(
+      participant?.answers
+    )
+      ? participant.answers
+      : [];
+
+  if (
+    !questions?.length &&
+    !answers.length
+  ) {
     return;
   }
 
-  addSectionTitle(doc, "Original Registration Answers");
-
-  const answerMap = new Map(
-    (participant.answers || []).map((answer: any) => [
-      String(answer.questionId),
-      answer.answer,
-    ])
+  addSectionTitle(
+    doc,
+    "02. Original Registration Answers"
   );
 
-  const rows = questions.map((question: any, index) => [
-    index + 1,
-    question.question ||
-      question.text ||
-      question.title ||
-      "Question",
-    answerMap.get(String(question._id)) ??
-      answerMap.get(String(question.id)) ??
-      "—",
-  ]);
+  const answerMap =
+    new Map<string, any>();
+
+  answers.forEach(
+    (answer: any) => {
+      const possibleKeys = [
+        answer?.questionId,
+        answer?.question?._id,
+        answer?.questionKey,
+        answer?.question?.key,
+        answer?.key,
+      ];
+
+      possibleKeys.forEach(
+        (key) => {
+          if (
+            key !== undefined &&
+            key !== null
+          ) {
+            answerMap.set(
+              String(key),
+              answer?.answer ??
+                answer?.value ??
+                answer?.response ??
+                answer?.text ??
+                "—"
+            );
+          }
+        }
+      );
+    }
+  );
+
+  const rows =
+    questions.map(
+      (
+        question: any,
+        index: number
+      ) => {
+        const id =
+          question?._id ??
+          question?.id;
+
+        const key =
+          question?.key ??
+          question?.questionKey;
+
+        const answer =
+          answerMap.get(
+            String(id)
+          ) ??
+          answerMap.get(
+            String(key)
+          ) ??
+          "—";
+
+        return [
+          index + 1,
+
+          question?.question ||
+            question?.text ||
+            question?.title ||
+            "Question",
+
+          cleanText(answer),
+        ];
+      }
+    );
 
   if (rows.length) {
     addTable(
       doc,
-      ["#", "Question", "Answer"],
+      [
+        "#",
+        "Question",
+        "Answer",
+      ],
       rows
     );
   }
 };
 
-const addAssessmentSection = (
-  doc: jsPDF,
-  assessment: AnyObject,
-  questions: AnyObject[]
-) => {
-  addSectionTitle(doc, "Detailed Assessment");
+/* -------------------------------------------------------------------------- */
+/* DETAILED ASSESSMENT                                                        */
+/* -------------------------------------------------------------------------- */
 
-  const questionKeys = [
-    "livelihoodAndProcess",
-    "difficultActivity",
-    "productionCapacityAndSeasonality",
-    "machinesAndManualActivities",
-    "monthlyFinancials",
-    "operatingCosts",
-    "powerSourceAndIssues",
-    "requiredImprovementOrSolution",
-    "loansAndSpaceDetails",
-    "futureScaleAndSupport",
-    "expectedSolution",
-    "identifiedSolution",
+const ASSESSMENT_FIELDS = [
+  {
+    key: "livelihoodAndProcess",
+    label: "Main livelihood and process",
+    aliases: [
+      "mainLivelihood",
+      "livelihood",
+      "livelihoodProcess",
+    ],
+  },
+  {
+    key: "difficultActivity",
+    label: "Most difficult activity",
+    aliases: [
+      "mostDifficultActivity",
+      "difficultProcess",
+    ],
+  },
+  {
+    key: "productionCapacityAndSeasonality",
+    label: "Production capacity and seasonality",
+    aliases: [
+      "productionCapacity",
+      "capacityAndSeasonality",
+      "production",
+    ],
+  },
+  {
+    key: "machinesAndManualActivities",
+    label: "Machines, tools and manual activities",
+    aliases: [
+      "machinesAndTools",
+      "machinesToolsManualActivities",
+      "machines",
+    ],
+  },
+  {
+    key: "monthlyFinancials",
+    label: "Monthly sales, expenses and net profit",
+    aliases: [
+      "monthlySalesExpensesProfit",
+      "salesExpensesProfit",
+      "financials",
+    ],
+  },
+  {
+    key: "operatingCosts",
+    label: "Major operating costs",
+    aliases: [
+      "majorOperatingCosts",
+      "operationalCosts",
+    ],
+  },
+  {
+    key: "powerSourceAndIssues",
+    label: "Power source and electricity issues",
+    aliases: [
+      "powerSource",
+      "electricityAndPowerIssues",
+      "powerIssues",
+    ],
+  },
+  {
+    key: "requiredImprovementOrSolution",
+    label: "Required improvement or solution",
+    aliases: [
+      "requiredImprovement",
+      "solutionRequired",
+      "requiredSolution",
+    ],
+  },
+  {
+    key: "loansAndSpaceDetails",
+    label: "Loans and space details",
+    aliases: [
+      "loansAndSpace",
+      "loanAndSpaceDetails",
+      "loans",
+      "spaceDetails",
+    ],
+  },
+  {
+    key: "futureScaleAndSupport",
+    label: "Future scale and support",
+    aliases: [
+      "futureScale",
+      "futureSupport",
+      "scaleAndSupport",
+    ],
+  },
+  {
+    key: "expectedSolution",
+    label: "Expected solution",
+    aliases: [
+      "expectedSupport",
+      "expectedIntervention",
+    ],
+  },
+  {
+    key: "identifiedSolution",
+    label: "Identified solution",
+    aliases: [
+      "identifiedIntervention",
+      "selectedSolution",
+    ],
+  },
+];
+
+const unwrapAssessment = (
+  raw: any
+): AnyObject => {
+  let current = raw;
+
+  for (let i = 0; i < 6; i++) {
+    if (
+      !current ||
+      typeof current !== "object" ||
+      Array.isArray(current)
+    ) {
+      return {};
+    }
+
+    if (
+      current.assessment &&
+      isObject(current.assessment)
+    ) {
+      current =
+        current.assessment;
+
+      continue;
+    }
+
+    if (
+      current.detailedAssessment &&
+      isObject(
+        current.detailedAssessment
+      )
+    ) {
+      current =
+        current.detailedAssessment;
+
+      continue;
+    }
+
+    if (
+      current.data &&
+      isObject(current.data) &&
+      (
+        current.data.assessment ||
+        current.data.detailedAssessment
+      )
+    ) {
+      current =
+        current.data;
+
+      continue;
+    }
+
+    break;
+  }
+
+  return isObject(current)
+    ? current
+    : {};
+};
+
+const getAssessmentAnswer = (
+  assessment: AnyObject,
+  field: typeof ASSESSMENT_FIELDS[number]
+) => {
+  const source =
+    unwrapAssessment(
+      assessment
+    );
+
+  const keys = [
+    field.key,
+    ...field.aliases,
   ];
 
-  const rows = questions?.length
-    ? questions.map((question: any, index: number) => [
-        index + 1,
-        question.question ||
-          question.text ||
-          question.title ||
-          "Question",
-        assessment?.[question.key] ||
-          assessment?.[questionKeys[index]] ||
-          "—",
-      ])
-    : questionKeys.map((key, index) => [
-        index + 1,
-        key,
-        assessment?.[key] || "—",
-      ]);
+  /*
+   * Direct field lookup
+   */
+  for (const key of keys) {
+    const value =
+      source?.[key];
 
-  addTable(
-    doc,
-    ["#", "Assessment Question", "Answer"],
-    rows
+    if (
+      value !== undefined &&
+      value !== null &&
+      value !== ""
+    ) {
+      return cleanText(value);
+    }
+  }
+
+  /*
+   * Nested answer arrays
+   */
+  const collections = [
+    source?.answers,
+    source?.responses,
+    source?.assessmentAnswers,
+  ];
+
+  for (
+    const collection of collections
+  ) {
+    if (
+      !Array.isArray(collection)
+    ) {
+      continue;
+    }
+
+    const found =
+      collection.find(
+        (item: any) => {
+          const itemKey =
+            item?.key ||
+            item?.field ||
+            item?.questionKey;
+
+          return keys.includes(
+            String(itemKey)
+          );
+        }
+      );
+
+    if (found) {
+      return cleanText(
+        found?.answer ??
+          found?.value ??
+          found?.response ??
+          found?.text
+      );
+    }
+  }
+
+  return "—";
+};
+
+const getDynamicAssessmentFields = (
+  assessment: AnyObject
+) => {
+  const excluded = new Set([
+    "_id",
+    "documents",
+    "geolocation",
+    "lastUpdatedAt",
+    "createdAt",
+    "updatedAt",
+    "answers",
+    "responses",
+    "assessmentAnswers",
+  ]);
+
+  const known = new Set(
+    ASSESSMENT_FIELDS.map(
+      (field) => field.key
+    )
   );
 
-  if (assessment?.geolocation) {
-    addSectionTitle(doc, "Assessment Geolocation");
+  return Object.entries(
+    assessment || {}
+  )
+    .filter(
+      ([key, value]) =>
+        !excluded.has(key) &&
+        !known.has(key) &&
+        value !== null &&
+        value !== undefined &&
+        value !== ""
+    )
+    .map(
+      ([key]) => ({
+        key,
+        label: humanizeKey(key),
+        aliases: [],
+      })
+    );
+};
 
-    addField(
-      doc,
-      "Latitude",
-      assessment.geolocation.latitude
+/* -------------------------------------------------------------------------- */
+/* ASSESSMENT CARDS                                                           */
+/* -------------------------------------------------------------------------- */
+
+const addAssessmentCard = (
+  doc: jsPDF,
+  number: number,
+  question: string,
+  answer: string
+) => {
+  const questionLines =
+    doc.splitTextToSize(
+      question,
+      CONTENT_WIDTH - 10
     );
 
-    addField(
-      doc,
-      "Longitude",
-      assessment.geolocation.longitude
+  const answerLines =
+    doc.splitTextToSize(
+      cleanText(answer),
+      CONTENT_WIDTH - 10
     );
 
-    addField(
-      doc,
-      "Captured At",
-      formatDateTime(
-        assessment.geolocation.capturedAt
-      )
+  const height =
+    8 +
+    questionLines.length * 3.8 +
+    3 +
+    answerLines.length * 4 +
+    7;
+
+  ensurePageSpace(
+    doc,
+    height + 4
+  );
+
+  doc.setFillColor(
+    ...COLORS.light
+  );
+
+  doc.setDrawColor(
+    ...COLORS.border
+  );
+
+  doc.roundedRect(
+    MARGIN,
+    cursorY,
+    CONTENT_WIDTH,
+    height,
+    2,
+    2,
+    "FD"
+  );
+
+  /*
+   * Number badge
+   */
+  doc.setFillColor(
+    ...COLORS.accent
+  );
+
+  doc.roundedRect(
+    MARGIN + 4,
+    cursorY + 4,
+    8,
+    8,
+    1.5,
+    1.5,
+    "F"
+  );
+
+  doc.setFont(
+    "helvetica",
+    "bold"
+  );
+
+  doc.setFontSize(7);
+
+  doc.setTextColor(
+    ...COLORS.white
+  );
+
+  doc.text(
+    String(number),
+    MARGIN + 8,
+    cursorY + 9.2,
+    {
+      align: "center",
+    }
+  );
+
+  /*
+   * Question
+   */
+  doc.setFont(
+    "helvetica",
+    "bold"
+  );
+
+  doc.setFontSize(8.5);
+
+  doc.setTextColor(
+    ...COLORS.dark
+  );
+
+  doc.text(
+    questionLines,
+    MARGIN + 16,
+    cursorY + 7
+  );
+
+  const questionHeight =
+    questionLines.length * 3.8;
+
+  /*
+   * Answer label
+   */
+  const answerY =
+    cursorY +
+    9 +
+    questionHeight;
+
+  doc.setFont(
+    "helvetica",
+    "bold"
+  );
+
+  doc.setFontSize(6.5);
+
+  doc.setTextColor(
+    ...COLORS.muted
+  );
+
+  doc.text(
+    "ANSWER",
+    MARGIN + 6,
+    answerY
+  );
+
+  /*
+   * Answer
+   */
+  doc.setFont(
+    "helvetica",
+    "normal"
+  );
+
+  doc.setFontSize(8);
+
+  doc.setTextColor(
+    ...COLORS.text
+  );
+
+  doc.text(
+    answerLines,
+    MARGIN + 6,
+    answerY + 5
+  );
+
+  cursorY +=
+    height + 5;
+};
+
+const addAssessmentSection = (
+  doc: jsPDF,
+  assessment: AnyObject
+) => {
+  const source =
+    unwrapAssessment(
+      assessment
     );
+
+  addSectionTitle(
+    doc,
+    "03. Detailed Assessment",
+    "Participant assessment responses and field observations"
+  );
+
+  const fields = [
+    ...ASSESSMENT_FIELDS,
+    ...getDynamicAssessmentFields(
+      source
+    ),
+  ];
+
+  fields.forEach(
+    (field, index) => {
+      const answer =
+        getAssessmentAnswer(
+          source,
+          field as any
+        );
+
+      addAssessmentCard(
+        doc,
+        index + 1,
+        field.label,
+        answer
+      );
+    }
+  );
+
+  /*
+   * Geolocation
+   */
+  const geo =
+    source?.geolocation;
+
+  if (
+    geo &&
+    (
+      geo.latitude !== undefined ||
+      geo.longitude !== undefined
+    )
+  ) {
+    addSectionTitle(
+      doc,
+      "Assessment Location"
+    );
+
+    addInfoCards(doc, [
+      {
+        label: "Latitude",
+        value: geo.latitude,
+      },
+      {
+        label: "Longitude",
+        value: geo.longitude,
+      },
+      {
+        label: "Captured At",
+        value: formatDateTime(
+          geo.capturedAt
+        ),
+      },
+    ]);
   }
 };
+
+/* -------------------------------------------------------------------------- */
+/* SOLUTION & DESIGN                                                          */
+/* -------------------------------------------------------------------------- */
 
 const addSolutionDesignSection = (
   doc: jsPDF,
   solutionDesign: AnyObject
 ) => {
-  addSectionTitle(doc, "Solution & Design");
+  if (
+    !solutionDesign ||
+    typeof solutionDesign !==
+      "object"
+  ) {
+    return;
+  }
 
-  if (solutionDesign?.gaps?.length) {
+  const hasContent =
+    (
+      Array.isArray(
+        solutionDesign.gaps
+      ) &&
+      solutionDesign.gaps.length
+    ) ||
+    (
+      Array.isArray(
+        solutionDesign.interventions
+      ) &&
+      solutionDesign.interventions.length
+    ) ||
+    (
+      Array.isArray(
+        solutionDesign.indicators
+      ) &&
+      solutionDesign.indicators.length
+    );
+
+  if (!hasContent) {
+    return;
+  }
+
+  addSectionTitle(
+    doc,
+    "05. Solution & Design",
+    "Recommended interventions and design decisions"
+  );
+
+  if (
+    Array.isArray(
+      solutionDesign.gaps
+    ) &&
+    solutionDesign.gaps.length
+  ) {
+    addSectionTitle(
+      doc,
+      "Identified Gaps"
+    );
+
     addTable(
       doc,
-      ["Gap", "Description"],
-      solutionDesign.gaps.map((gap: any) => [
-        gap.name,
-        gap.description,
-      ])
+      [
+        "Gap",
+        "Description",
+      ],
+      solutionDesign.gaps.map(
+        (gap: any) => [
+          gap?.name ||
+            gap?.title ||
+            "Gap",
+
+          gap?.description ||
+            gap?.details ||
+            "—",
+        ]
+      )
     );
   }
 
-  if (solutionDesign?.interventions?.length) {
-    addSectionTitle(doc, "Recommended Interventions");
+  if (
+    Array.isArray(
+      solutionDesign.interventions
+    ) &&
+    solutionDesign.interventions.length
+  ) {
+    addSectionTitle(
+      doc,
+      "Recommended Interventions"
+    );
 
     addTable(
       doc,
@@ -607,47 +2056,57 @@ const addSolutionDesignSection = (
         "Specification",
         "Priority",
         "Estimated Cost",
-        "Team Decision",
+        "Decision",
         "Status",
       ],
       solutionDesign.interventions.map(
         (item: any) => [
-          item.interventionType,
-          item.title,
-          item.specification,
-          item.priority,
-          item.estimatedCost,
-          item.teamDecision,
-          item.status,
+          statusLabel(
+            item?.interventionType
+          ),
+          item?.title,
+          item?.specification,
+          statusLabel(
+            item?.priority
+          ),
+          item?.estimatedCost,
+          statusLabel(
+            item?.teamDecision
+          ),
+          statusLabel(
+            item?.status
+          ),
         ]
       )
     );
 
-    addSectionTitle(doc, "Intervention Details");
-
-    for (const intervention of solutionDesign.interventions) {
-      addField(
+    for (
+      const intervention of
+        solutionDesign.interventions
+    ) {
+      addSectionTitle(
         doc,
-        "Intervention",
-        intervention.title
+        intervention?.title ||
+          "Intervention Details"
       );
 
       addField(
         doc,
         "Why",
-        intervention.why
+        intervention?.why
       );
 
       addField(
         doc,
         "Source",
-        intervention.source
+        intervention?.source
       );
 
       addField(
         doc,
         "Leverage - End User",
-        intervention.leverageEndUserPercent
+        intervention?.leverageEndUserPercent !==
+          undefined
           ? `${intervention.leverageEndUserPercent}%`
           : "—"
       );
@@ -655,7 +2114,8 @@ const addSolutionDesignSection = (
       addField(
         doc,
         "Leverage - SELCO",
-        intervention.leverageSelcoPercent
+        intervention?.leverageSelcoPercent !==
+          undefined
           ? `${intervention.leverageSelcoPercent}%`
           : "—"
       );
@@ -663,21 +2123,27 @@ const addSolutionDesignSection = (
       addField(
         doc,
         "Decision Rationale",
-        intervention.decisionRationale
+        intervention?.decisionRationale
       );
 
       addField(
         doc,
         "Add To Intervention Plan",
-        intervention.addToInterventionPlan
+        intervention?.addToInterventionPlan
       );
-
-      cursorY += 2;
     }
   }
 
-  if (solutionDesign?.indicators?.length) {
-    addSectionTitle(doc, "Indicators");
+  if (
+    Array.isArray(
+      solutionDesign.indicators
+    ) &&
+    solutionDesign.indicators.length
+  ) {
+    addSectionTitle(
+      doc,
+      "Indicators"
+    );
 
     addTable(
       doc,
@@ -686,127 +2152,169 @@ const addSolutionDesignSection = (
         "Baseline",
         "Target",
         "Current",
-        "Date Measured",
+        "Measured",
       ],
       solutionDesign.indicators.map(
         (indicator: any) => [
-          indicator.name,
-          indicator.baseline,
-          indicator.target,
-          indicator.current,
-          formatDate(indicator.dateMeasured),
+          indicator?.name,
+          indicator?.baseline,
+          indicator?.target,
+          indicator?.current,
+          formatDate(
+            indicator?.dateMeasured
+          ),
         ]
       )
     );
   }
 };
 
+/* -------------------------------------------------------------------------- */
+/* IMPLEMENTATION                                                             */
+/* -------------------------------------------------------------------------- */
+
 const addImplementationSection = (
   doc: jsPDF,
   implementation: AnyObject
 ) => {
-  if (!implementation?.interventions?.length) {
+  if (
+    !implementation ||
+    !Array.isArray(
+      implementation.interventions
+    ) ||
+    !implementation.interventions.length
+  ) {
     return;
   }
 
-  addSectionTitle(doc, "Implementation");
+  addSectionTitle(
+    doc,
+    "06. Implementation",
+    "Implementation progress and intervention tracking"
+  );
 
-  for (const item of implementation.interventions) {
-    addField(
-      doc,
-      "Intervention",
-      item.interventionTitle ||
-        item.title ||
-        item.interventionId
-    );
+  implementation.interventions.forEach(
+    (item: any, index: number) => {
+      addSectionTitle(
+        doc,
+        `${index + 1}. ${
+          item?.interventionTitle ||
+          item?.title ||
+          "Intervention"
+        }`
+      );
 
-    addField(
-      doc,
-      "Status",
-      statusLabel(
-        item.currentStatus ||
-          item.status
-      )
-    );
+      addInfoCards(doc, [
+        {
+          label: "Status",
+          value: statusLabel(
+            item?.currentStatus ||
+              item?.status
+          ),
+        },
+        {
+          label: "Vendor",
+          value:
+            item?.vendorName,
+        },
+        {
+          label: "Actual Cost",
+          value:
+            item?.actualCost,
+        },
+        {
+          label: "GPS Confirmed",
+          value:
+            item?.gpsSiteConfirmed,
+        },
+      ]);
 
-    addField(
-      doc,
-      "Actual Cost",
-      item.actualCost
-    );
-
-    addField(
-      doc,
-      "End User Contribution",
-      item.endUserContribution
-    );
-
-    addField(
-      doc,
-      "SELCO Contribution",
-      item.selcoContribution
-    );
-
-    addField(
-      doc,
-      "Vendor",
-      item.vendorName
-    );
-
-    addField(
-      doc,
-      "Procurement Date",
-      formatDate(item.procurementDate)
-    );
-
-    addField(
-      doc,
-      "Installation Date",
-      formatDate(item.installationDate)
-    );
-
-    addField(
-      doc,
-      "Operational Date",
-      formatDate(item.operationalDate)
-    );
-
-    addField(
-      doc,
-      "GPS Confirmed",
-      item.gpsSiteConfirmed
-    );
-
-    if (
-      item.latitude !== undefined &&
-      item.longitude !== undefined
-    ) {
       addField(
         doc,
-        "GPS",
-        `${safe(item.latitude)}, ${safe(item.longitude)}`
+        "End User Contribution",
+        item?.endUserContribution
+      );
+
+      addField(
+        doc,
+        "SELCO Contribution",
+        item?.selcoContribution
+      );
+
+      addField(
+        doc,
+        "Procurement Date",
+        formatDate(
+          item?.procurementDate
+        )
+      );
+
+      addField(
+        doc,
+        "Installation Date",
+        formatDate(
+          item?.installationDate
+        )
+      );
+
+      addField(
+        doc,
+        "Operational Date",
+        formatDate(
+          item?.operationalDate
+        )
+      );
+
+      if (
+        item?.latitude !== undefined &&
+        item?.longitude !== undefined
+      ) {
+        addField(
+          doc,
+          "GPS",
+          `${safe(
+            item.latitude
+          )}, ${safe(
+            item.longitude
+          )}`
+        );
+      }
+
+      addField(
+        doc,
+        "Reason For Change",
+        item?.reasonForChange
       );
     }
-
-    addField(
-      doc,
-      "Reason For Change",
-      item.reasonForChange
-    );
-
-    cursorY += 3;
-  }
+  );
 };
+
+/* -------------------------------------------------------------------------- */
+/* WHATSAPP                                                                   */
+/* -------------------------------------------------------------------------- */
 
 const addWhatsAppSection = (
   doc: jsPDF,
   interactions: AnyObject[]
 ) => {
-  if (!interactions?.length) {
+  if (
+    !Array.isArray(
+      interactions
+    ) ||
+    !interactions.length
+  ) {
     return;
   }
 
-  addSectionTitle(doc, "WhatsApp Messages");
+  addSectionTitle(
+    doc,
+    "07. WhatsApp Messages",
+    `${interactions.length} interaction${
+      interactions.length === 1
+        ? ""
+        : "s"
+    }`
+  );
 
   addTable(
     doc,
@@ -817,36 +2325,158 @@ const addWhatsAppSection = (
       "Message",
       "Status",
     ],
-    interactions.map((item: any) => [
-      formatDateTime(
-        item.createdAt ||
-          item.updatedAt
-      ),
-      item.direction ||
-        item.type ||
-        "—",
-      item.messageType ||
-        item.templateName ||
-        "—",
-      item.message ||
-        item.text ||
-        item.body ||
-        "—",
-      item.status ||
-        "—",
-    ])
+    interactions.map(
+      (item: any) => [
+        formatDateTime(
+          item?.createdAt ||
+            item?.updatedAt
+        ),
+
+        statusLabel(
+          item?.direction ||
+            item?.type
+        ),
+
+        item?.messageType ||
+          item?.templateName ||
+          "—",
+
+        item?.message ||
+          item?.text ||
+          item?.body ||
+          "—",
+
+        statusLabel(
+          item?.status
+        ),
+      ]
+    )
   );
 };
 
-const addFooter = (doc: jsPDF) => {
-  const totalPages = doc.getNumberOfPages();
+/* -------------------------------------------------------------------------- */
+/* SUMMARY                                                                    */
+/* -------------------------------------------------------------------------- */
 
-  for (let page = 1; page <= totalPages; page++) {
+const addJourneySummary = (
+  doc: jsPDF,
+  participant: AnyObject,
+  assessment: AnyObject,
+  solutionDesign: AnyObject,
+  implementation: AnyObject
+) => {
+  addSectionTitle(
+    doc,
+    "08. Journey Summary",
+    "Overall participant journey status"
+  );
+
+  const assessmentSource =
+    unwrapAssessment(
+      assessment
+    );
+
+  const interventionCount =
+    Array.isArray(
+      solutionDesign?.interventions
+    )
+      ? solutionDesign.interventions
+          .length
+      : 0;
+
+  const implementationCount =
+    Array.isArray(
+      implementation?.interventions
+    )
+      ? implementation.interventions
+          .length
+      : 0;
+
+  const documentCount =
+    Object.values(
+      assessmentSource?.documents ||
+        {}
+    ).reduce(
+      (
+        total: number,
+        files: any
+      ) => {
+        if (Array.isArray(files)) {
+          return (
+            total +
+            files.length
+          );
+        }
+
+        return (
+          total +
+          (files ? 1 : 0)
+        );
+      },
+      0
+    );
+
+  addInfoCards(doc, [
+    {
+      label: "Assessment Status",
+      value: statusLabel(
+        participant?.assessmentStatus
+      ),
+    },
+    {
+      label: "Implementation Status",
+      value: statusLabel(
+        participant?.implementationStatus
+      ),
+    },
+    {
+      label: "Interventions",
+      value: interventionCount,
+    },
+    {
+      label: "Implementation Records",
+      value: implementationCount,
+    },
+    {
+      label: "Assessment Documents",
+      value: documentCount,
+    },
+    {
+      label: "Report Generated",
+      value: formatDateTime(
+        new Date()
+      ),
+    },
+  ]);
+};
+
+/* -------------------------------------------------------------------------- */
+/* FOOTER                                                                     */
+/* -------------------------------------------------------------------------- */
+
+const addFooter = (
+  doc: jsPDF
+) => {
+  const totalPages =
+    doc.getNumberOfPages();
+
+  for (
+    let page = 1;
+    page <= totalPages;
+    page++
+  ) {
     doc.setPage(page);
 
-    doc.setFont("helvetica", "normal");
+    doc.setFont(
+      "helvetica",
+      "normal"
+    );
+
     doc.setFontSize(7);
-    doc.setTextColor(120, 120, 120);
+
+    doc.setTextColor(
+      ...COLORS.muted
+    );
 
     doc.text(
       `Participant Journey Report • Page ${page} of ${totalPages}`,
@@ -858,147 +2488,409 @@ const addFooter = (doc: jsPDF) => {
       "SELCO Foundation × KVK | Nandurbar Mela 2026",
       PAGE_WIDTH - MARGIN,
       PAGE_HEIGHT - 7,
-      { align: "right" }
+      {
+        align: "right",
+      }
     );
   }
 };
 
-export const generateParticipantPdf = async ({
-  participant,
-  questions,
-  assessment,
-  solutionDesign,
-  implementation,
-  whatsapp,
-}: {
-  participant: AnyObject;
-  questions: AnyObject[];
-  assessment: AnyObject;
-  solutionDesign: AnyObject;
-  implementation: AnyObject;
-  whatsapp: AnyObject[];
-}) => {
-  const doc = new jsPDF({
-    orientation: "portrait",
-    unit: "mm",
-    format: "a4",
-  });
+/* -------------------------------------------------------------------------- */
+/* MAIN GENERATOR                                                             */
+/* -------------------------------------------------------------------------- */
 
-  cursorY = MARGIN + 10;
-
-  addPageHeader(doc);
-
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(20);
-  doc.setTextColor(25, 25, 25);
-
-  doc.text(
-    "Participant Journey Report",
-    MARGIN,
-    cursorY
-  );
-
-  cursorY += 8;
-
-  doc.setFontSize(12);
-  doc.setFont("helvetica", "normal");
-
-  doc.text(
-    "Nandurbar Mela 2026",
-    MARGIN,
-    cursorY
-  );
-
-  cursorY += 5;
-
-  doc.setFontSize(9);
-  doc.setTextColor(100, 100, 100);
-
-  doc.text(
-    "SELCO Foundation × KVK",
-    MARGIN,
-    cursorY
-  );
-
-  cursorY += 10;
-
-  addRegistrationSection(
-    doc,
-    participant
-  );
-
-  addRegistrationAnswers(
-    doc,
+export const generateParticipantPdf =
+  async ({
     participant,
-    questions
-  );
-
-  addAssessmentSection(
-    doc,
+    questions,
     assessment,
-    questions
-  );
+    solutionDesign,
+    implementation,
+    whatsapp,
+  }: {
+    participant: AnyObject;
+    questions: AnyObject[];
+    assessment: AnyObject;
+    solutionDesign: AnyObject;
+    implementation: AnyObject;
+    whatsapp: AnyObject[];
+  }) => {
+    const doc = new jsPDF({
+      orientation: "portrait",
+      unit: "mm",
+      format: "a4",
+      compress: true,
+    });
 
-  const documents =
-    getAssessmentDocuments(assessment);
+    cursorY = MARGIN + 10;
 
-  await addDocuments(
-    doc,
-    "Site Photos",
-    documents.sitePhotos
-  );
+    addPageHeader(doc);
 
-  await addDocuments(
-    doc,
-    "Machinery Photos",
-    documents.machineryPhotos
-  );
+    /* ---------------------------------------------------------------------- */
+    /* COVER                                                                  */
+    /* ---------------------------------------------------------------------- */
 
-  await addDocuments(
-    doc,
-    "Product Photos",
-    documents.productPhotos
-  );
+    ensurePageSpace(
+      doc,
+      70
+    );
 
-  await addDocuments(
-    doc,
-    "Electricity Bill",
-    documents.electricityBill
-  );
+    cursorY += 15;
 
-  await addDocuments(
-    doc,
-    "Other Documents",
-    documents.otherDocuments
-  );
+    doc.setFont(
+      "helvetica",
+      "bold"
+    );
 
-  addSolutionDesignSection(
-    doc,
-    solutionDesign
-  );
+    doc.setFontSize(25);
 
-  addImplementationSection(
-    doc,
-    implementation
-  );
+    doc.setTextColor(
+      ...COLORS.dark
+    );
 
-  addWhatsAppSection(
-    doc,
-    whatsapp
-  );
+    doc.text(
+      "Participant",
+      MARGIN,
+      cursorY
+    );
 
-  addFooter(doc);
+    cursorY += 11;
 
-  const safeName = String(
-    participant.name ||
-      participant.fullName ||
-      "participant"
-  )
-    .trim()
-    .replace(/[^a-zA-Z0-9-_]+/g, "-")
-    .replace(/-+/g, "-");
+    doc.text(
+      "Journey Report",
+      MARGIN,
+      cursorY
+    );
 
-  doc.save(
-    `participant-journey-${safeName || "participant"}.pdf`
-  );
-};
+    cursorY += 10;
+
+    doc.setFont(
+      "helvetica",
+      "normal"
+    );
+
+    doc.setFontSize(11);
+
+    doc.setTextColor(
+      ...COLORS.accent
+    );
+
+    doc.text(
+      "Nandurbar Mela 2026",
+      MARGIN,
+      cursorY
+    );
+
+    cursorY += 6;
+
+    doc.setFontSize(8.5);
+
+    doc.setTextColor(
+      ...COLORS.muted
+    );
+
+    doc.text(
+      "SELCO Foundation × KVK",
+      MARGIN,
+      cursorY
+    );
+
+    cursorY += 18;
+
+    /*
+     * Participant hero card
+     */
+    doc.setFillColor(
+      ...COLORS.dark
+    );
+
+    doc.roundedRect(
+      MARGIN,
+      cursorY,
+      CONTENT_WIDTH,
+      48,
+      3,
+      3,
+      "F"
+    );
+
+    doc.setFont(
+      "helvetica",
+      "bold"
+    );
+
+    doc.setFontSize(16);
+
+    doc.setTextColor(
+      ...COLORS.white
+    );
+
+    doc.text(
+      getParticipantName(
+        participant
+      ),
+      MARGIN + 7,
+      cursorY + 12
+    );
+
+    doc.setFont(
+      "helvetica",
+      "normal"
+    );
+
+    doc.setFontSize(8.5);
+
+    doc.setTextColor(
+      226,
+      232,
+      240
+    );
+
+    doc.text(
+      getOrganizationName(
+        participant
+      ),
+      MARGIN + 7,
+      cursorY + 20
+    );
+
+    doc.text(
+      getParticipantLocation(
+        participant
+      ),
+      MARGIN + 7,
+      cursorY + 27
+    );
+
+    doc.setFont(
+      "helvetica",
+      "bold"
+    );
+
+    doc.setFontSize(7);
+
+    doc.setTextColor(
+      191,
+      219,
+      254
+    );
+
+    doc.text(
+      "ASSESSMENT",
+      MARGIN + 7,
+      cursorY + 38
+    );
+
+    doc.setFont(
+      "helvetica",
+      "normal"
+    );
+
+    doc.setTextColor(
+      ...COLORS.white
+    );
+
+    doc.text(
+      statusLabel(
+        participant?.assessmentStatus
+      ),
+      MARGIN + 35,
+      cursorY + 38
+    );
+
+    doc.setFont(
+      "helvetica",
+      "bold"
+    );
+
+    doc.setTextColor(
+      191,
+      219,
+      254
+    );
+
+    doc.text(
+      "IMPLEMENTATION",
+      MARGIN + 82,
+      cursorY + 38
+    );
+
+    doc.setFont(
+      "helvetica",
+      "normal"
+    );
+
+    doc.setTextColor(
+      ...COLORS.white
+    );
+
+    doc.text(
+      statusLabel(
+        participant?.implementationStatus
+      ),
+      MARGIN + 122,
+      cursorY + 38
+    );
+
+    cursorY += 62;
+
+    addField(
+      doc,
+      "Report Generated",
+      formatDateTime(
+        new Date()
+      )
+    );
+
+    /*
+     * Page break after cover
+     */
+    doc.addPage();
+
+    cursorY = MARGIN + 5;
+
+    addPageHeader(doc);
+
+    /* ---------------------------------------------------------------------- */
+    /* PROFILE                                                                */
+    /* ---------------------------------------------------------------------- */
+
+    addRegistrationSection(
+      doc,
+      participant
+    );
+
+    /* ---------------------------------------------------------------------- */
+    /* REGISTRATION ANSWERS                                                   */
+    /* ---------------------------------------------------------------------- */
+
+    addRegistrationAnswers(
+      doc,
+      participant,
+      questions
+    );
+
+    /* ---------------------------------------------------------------------- */
+    /* ASSESSMENT                                                             */
+    /* ---------------------------------------------------------------------- */
+
+    addAssessmentSection(
+      doc,
+      assessment
+    );
+
+    /* ---------------------------------------------------------------------- */
+    /* DOCUMENTS                                                              */
+    /* ---------------------------------------------------------------------- */
+
+    const assessmentSource =
+      unwrapAssessment(
+        assessment
+      );
+
+    const documents =
+      normalizeDocuments(
+        assessmentSource
+      );
+
+    await addDocuments(
+      doc,
+      "04. Site Photos",
+      documents.sitePhotos
+    );
+
+    await addDocuments(
+      doc,
+      "Machinery Photos",
+      documents.machineryPhotos
+    );
+
+    await addDocuments(
+      doc,
+      "Product Photos",
+      documents.productPhotos
+    );
+
+    await addDocuments(
+      doc,
+      "Electricity Bill",
+      documents.electricityBill
+    );
+
+    await addDocuments(
+      doc,
+      "Other Documents",
+      documents.otherDocuments
+    );
+
+    /* ---------------------------------------------------------------------- */
+    /* SOLUTION DESIGN                                                        */
+    /* ---------------------------------------------------------------------- */
+
+    addSolutionDesignSection(
+      doc,
+      solutionDesign
+    );
+
+    /* ---------------------------------------------------------------------- */
+    /* IMPLEMENTATION                                                         */
+    /* ---------------------------------------------------------------------- */
+
+    addImplementationSection(
+      doc,
+      implementation
+    );
+
+    /* ---------------------------------------------------------------------- */
+    /* WHATSAPP                                                               */
+    /* ---------------------------------------------------------------------- */
+
+    addWhatsAppSection(
+      doc,
+      whatsapp
+    );
+
+    /* ---------------------------------------------------------------------- */
+    /* SUMMARY                                                                */
+    /* ---------------------------------------------------------------------- */
+
+    addJourneySummary(
+      doc,
+      participant,
+      assessment,
+      solutionDesign,
+      implementation
+    );
+
+    /* ---------------------------------------------------------------------- */
+    /* FOOTER                                                                 */
+    /* ---------------------------------------------------------------------- */
+
+    addFooter(doc);
+
+    /* ---------------------------------------------------------------------- */
+    /* SAVE                                                                   */
+    /* ---------------------------------------------------------------------- */
+
+    const safeName =
+      String(
+        getParticipantName(
+          participant
+        )
+      )
+        .trim()
+        .replace(
+          /[^a-zA-Z0-9-_]+/g,
+          "-"
+        )
+        .replace(
+          /-+/g,
+          "-"
+        );
+
+    doc.save(
+      `participant-journey-${
+        safeName || "participant"
+      }.pdf`
+    );
+  };

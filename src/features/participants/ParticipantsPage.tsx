@@ -1432,7 +1432,7 @@ export function ParticipantsPage() {
       {stats && (
         <div className="stats">
           <Stat
-            label="Assessment - In Progress"
+            label="Participant Survey - In Progress"
             value={String(
               stats.byAssessment?.find(
                 (item: any) =>
@@ -1443,7 +1443,7 @@ export function ParticipantsPage() {
           />
 
           <Stat
-            label="Assessment - Completed"
+            label="Participant Survey - Completed"
             value={String(
               stats.byAssessment?.find(
                 (item: any) =>
@@ -1454,7 +1454,7 @@ export function ParticipantsPage() {
           />
 
           <Stat
-            label="Assessment - Not Started"
+            label="Participant Survey - Not Started"
             value={String(
               stats.byAssessment?.find(
                 (item: any) =>
@@ -1691,33 +1691,71 @@ export function ParticipantsPage() {
                   cursor: "pointer",
                 }}
               >
-                <option value="">
-                  All sectors
-                </option>
+                  <option value="">All sectors</option>
 
-                <option value="FOOD_PROCESSING">
-                  Food processing
-                </option>
+  <option value="FOOD_PROCESSING">
+    Food processing
+  </option>
 
-                <option value="AGRICULTURE">
-                  Agriculture
-                </option>
+  <option value="AGRICULTURE">
+    Agriculture
+  </option>
 
-                <option value="LIVESTOCK">
-                  Livestock
-                </option>
+  <option value="LIVESTOCK">
+    Livestock
+  </option>
 
-                <option value="RETAIL_SERVICES">
-                  Retail & Services
-                </option>
+  <option value="RETAIL_SERVICES">
+    Retail & Services
+  </option>
 
-                <option value="MANUFACTURING">
-                  Manufacturing
-                </option>
+  <option value="MANUFACTURING">
+    Manufacturing
+  </option>
 
-                <option value="OTHER">
-                  Other
-                </option>
+  <option value="Papad">
+    Papad
+  </option>
+
+  <option value="Mushroom">
+    Mushroom
+  </option>
+
+  <option value="Millets">
+    Millets
+  </option>
+
+  <option value="Chilli">
+    Chilli
+  </option>
+
+  <option value="Oil Mill">
+    Oil Mill
+  </option>
+
+  <option value="Rice Mill">
+    Rice Mill
+  </option>
+
+  <option value="Dairy">
+    Dairy
+  </option>
+
+  <option value="Honey">
+    Honey
+  </option>
+
+  <option value="Dal">
+    Dal
+  </option>
+
+  <option value="Vegitable">
+    Vegitable
+  </option>
+
+  <option value="OTHER">
+    Other
+  </option>
               </select>
             </div>
 
